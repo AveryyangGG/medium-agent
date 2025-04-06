@@ -6,6 +6,10 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from telegram.error import NetworkError, TimedOut, TelegramError
 from enum import Enum
+import requests
+from bs4 import BeautifulSoup
+import uuid
+from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ADMIN_USER_IDS
@@ -53,6 +57,7 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("fetch", self.fetch_command))
         self.application.add_handler(CommandHandler("popular", self.popular_command))
         self.application.add_handler(CommandHandler("tag", self.tag_command))
+        self.application.add_handler(CommandHandler("summary", self.summary_command))
         
         # 資料庫管理命令
         self.application.add_handler(CommandHandler("db_stats", self.db_stats_command))
@@ -85,6 +90,7 @@ class TelegramBot:
             "/fetch - Fetch new top Medium articles\n"
             "/popular - Get popular Medium articles\n"
             "/tag <tag> - Find articles with specific tag\n"
+            "/summary <url> - Generate summary for a Medium article URL\n"
             "/help - Show this help message"
         )
         
@@ -305,6 +311,92 @@ class TelegramBot:
             print(f"獲取標籤文章時出錯: {e}")
             await update.message.reply_text(f"獲取標籤文章時出錯: {e}")
     
+    async def summary_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """生成Medium文章的摘要和詳細整理"""
+        if not context.args:
+            await update.message.reply_text("請提供Medium文章連結。例如: /summary https://medium.com/...")
+            return
+        
+        url = context.args[0]
+        
+        # 驗證URL是否為Medium連結
+        #if not url.startswith(("https://medium.com/", "https://towardsdatascience.com/", "https://betterhumans.pub/", "https://www.freecodecamp.org/")):
+        #    await update.message.reply_text("請提供有效的Medium或Medium發布平台文章連結。")
+        #    return
+        
+        await update.message.reply_text(f"正在處理文章連結，開始生成摘要，請稍等...")
+        
+        try:
+            # 提取文章內容
+            content, claps_count, responses_count = self.medium_service.extract_content_from_url(url)
+            
+            if not content:
+                await update.message.reply_text("無法提取文章內容，請確認連結是否正確或重試。")
+                return
+            
+            # 創建臨時文章對象
+            article = {
+                'id': str(uuid.uuid4()),
+                'title': "Medium文章",  # 暫時標題，後續可能從內容中提取
+                'author': "未知作者",
+                'url': url,
+                'published_at': datetime.now().isoformat(),
+                'tags': None,
+                'content': content,
+                'summary': None,
+                'claps': claps_count,
+                'responses': responses_count
+            }
+            
+            # 嘗試從頁面標題提取更好的標題
+            try:
+                response = requests.get(url, cookies=self.medium_service.cookies, headers=self.medium_service.headers)
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    title_elem = soup.find('title')
+                    if title_elem and title_elem.text:
+                        # 清理標題字串（去除Medium後綴等）
+                        title = title_elem.text.split('|')[0].strip()
+                        article['title'] = title
+                        
+                    # 嘗試提取作者
+                    author_elem = soup.find('meta', {'name': 'author'})
+                    if author_elem and author_elem.get('content'):
+                        article['author'] = author_elem.get('content')
+            except Exception as e:
+                print(f"提取標題時出錯: {e}")
+                # 繼續使用默認標題
+            
+            # 在這裡直接處理文章摘要和詳細整理
+            try:
+                # 生成摘要和重點
+                summary, bullet_points = self.summarization_service.summarize_article(article)
+                formatted_summary = self.summarization_service.format_summary_with_bullets(summary, bullet_points)
+                article['summary'] = formatted_summary
+                
+                # 生成詳細條列整理
+                detailed_outline = self.summarization_service.create_detailed_outline(article)
+                if not detailed_outline:
+                    detailed_outline = article.get('summary', '無摘要可用')
+                
+                # 保存詳細條列整理
+                article['detailed_summary'] = detailed_outline
+                
+                # 將文章保存到資料庫
+                self.db.add_article(article)
+            except Exception as e:
+                print(f"處理文章摘要或詳細整理時出錯: {e}")
+                await update.message.reply_text(f"處理文章摘要或詳細整理時出錯: {e}")
+                return
+            
+            # 創建單篇文章的列表，使用與fetch命令相同的處理邏輯
+            articles_list = [article]
+            await self._process_and_send_articles(update, articles_list)
+            
+        except Exception as e:
+            print(f"生成文章摘要時出錯: {e}")
+            await update.message.reply_text(f"生成文章摘要時出錯: {e}")
+    
     async def _process_and_send_articles(self, update, articles):
         """處理並發送文章列表 - 避免代碼重複"""
         try:
@@ -316,30 +408,38 @@ class TelegramBot:
                     processed_articles.append(existing)
                     continue
                 
-                # 摘要處理
-                try:
-                    summary, bullet_points = self.summarization_service.summarize_article(article)
-                    if summary:
-                        formatted_summary = self.summarization_service.format_summary_with_bullets(summary, bullet_points)
-                        article['summary'] = formatted_summary
-                    
-                    # 保存到資料庫
-                    self.db.add_article(article)
-                    processed_articles.append(article)
-                except Exception as e:
-                    print(f"處理文章時出錯: {e}")
+                # 確保 tags 欄位類型正確
+                if 'tags' in article and isinstance(article['tags'], list):
+                    article['tags'] = None
+                
+                # 如果文章還沒有摘要，則處理摘要
+                if not article.get('summary'):
+                    try:
+                        summary, bullet_points = self.summarization_service.summarize_article(article)
+                        if summary:
+                            formatted_summary = self.summarization_service.format_summary_with_bullets(summary, bullet_points)
+                            article['summary'] = formatted_summary
+                    except Exception as e:
+                        print(f"處理文章摘要時出錯: {e}")
+                
+                # 保存到資料庫
+                self.db.add_article(article)
+                processed_articles.append(article)
             
             # 發送文章
             if processed_articles:
                 for article in processed_articles:
                     try:
-                        # 生成詳細outline
-                        detailed_outline = self.summarization_service.create_detailed_outline(article)
-                        if not detailed_outline:
-                            detailed_outline = article.get('summary', 'No outline available.')
-                        
-                        # 保存到資料庫
-                        self.db.update_article_with_details(article['id'], detailed_summary=detailed_outline)
+                        # 如果文章還沒有詳細整理，則生成
+                        if not article.get('detailed_summary'):
+                            detailed_outline = self.summarization_service.create_detailed_outline(article)
+                            if not detailed_outline:
+                                detailed_outline = article.get('summary', 'No outline available.')
+                            
+                            # 保存到資料庫
+                            self.db.update_article_with_details(article['id'], detailed_summary=detailed_outline)
+                        else:
+                            detailed_outline = article.get('detailed_summary')
                         
                         # 獲取掌聲與回應數
                         claps = article.get('claps', 0)
@@ -393,6 +493,9 @@ class TelegramBot:
                                 f"*{article['title']}*\n"
                                 f"作者: {article['author']} · {engagement_info}\n\n"
                             )
+                            
+                            # 獲取摘要
+                            summary = article.get('summary', '無摘要可用')
                             
                             if len(detailed_outline) > (max_length - len(message_title)):
                                 truncated_outline = detailed_outline[:max_length - len(message_title) - 20] + "...(已截斷)"

@@ -24,7 +24,6 @@ class MediumService:
         ]
         
         self.popular_feeds = [
-            "https://medium.com/feed/topic/popular",
             "https://medium.com/feed/tag/technology/popular",
             "https://medium.com/feed/tag/programming/popular",
             "https://medium.com/feed/tag/artificial-intelligence/popular"
