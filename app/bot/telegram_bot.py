@@ -198,32 +198,55 @@ class TelegramBot:
             return
         
         query = " ".join(context.args)
-        await update.message.reply_text(f"Searching for: {query}")
+        await update.message.reply_text(f"Searching for articles with keyword: '{query}'")
         
-        results = self.vector_db.query_similar_articles(query, n_results=5)
+        results = self.db.search_articles_by_keyword(query, limit=5)
         
         if not results:
-            await update.message.reply_text("No matching articles found.")
+            await update.message.reply_text("No matching articles found based on title or tags.")
             return
         
-        await update.message.reply_text(f"Found {len(results)} relevant articles:")
+        await update.message.reply_text(f"Found {len(results)} matching articles:")
         
         for article in results:
-            # 獲取掌聲與回應數
+            # Prepare article data for sending (ensure tags are handled if needed for display)
             claps = article.get('claps', 0)
             responses = article.get('responses', 0)
             engagement_info = f"👏 {claps:,} · 💬 {responses}"
+            
+            # Display tags if available (assuming they are lists)
+            tags_str = ""
+            tags = article.get('tags', [])
+            if tags and isinstance(tags, list):
+                # Pre-format the joined tags
+                joined_tags = ", ".join(tags)
+                tags_str = f"Tags: `{joined_tags}`\n"
+            user_tags = article.get('user_tags', [])
+            if user_tags and isinstance(user_tags, list):
+                # Pre-format the joined user tags
+                joined_user_tags = ", ".join(user_tags)
+                if tags_str: # Append to existing tags
+                    tags_str += f"User Tags: `{joined_user_tags}`\n"
+                else:
+                    tags_str = f"User Tags: `{joined_user_tags}`\n"
             
             keyboard = [
                 [InlineKeyboardButton("Read Article", url=article['url'])]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
+            summary = article.get('summary', 'No summary available.')
+            # Shorten summary if needed
+            max_summary_len = 150
+            if summary and len(summary) > max_summary_len:
+                summary = summary[:max_summary_len] + "..."
+                
             message = (
                 f"*{article['title']}*\n"
                 f"By: {article['author']} · {engagement_info}\n"
-                f"Published: {article['published_at'].split('T')[0]}\n\n"
-                f"{article.get('summary', 'No summary available.')[:150]}...\n\n"
+                f"Published: {article.get('published_at','N/A').split('T')[0]}\n"
+                f"{tags_str}"
+                f"{summary}\n\n"
             )
             
             await update.message.reply_text(

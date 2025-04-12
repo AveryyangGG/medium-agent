@@ -376,3 +376,55 @@ class Database:
         if self.conn:
             self.conn.close()
             self.conn = None 
+
+    def search_articles_by_keyword(self, query: str, limit: int = 10) -> list:
+        """Search articles by keyword in title, tags, or user_tags."""
+        conn = self.get_connection()
+        with self.lock:
+            cursor = conn.cursor()
+            search_term = f'%{query}%'
+            sql_query = """
+                SELECT * FROM articles 
+                WHERE title LIKE ? 
+                   OR tags LIKE ? 
+                   OR user_tags LIKE ?
+                ORDER BY published_at DESC 
+                LIMIT ?
+            """
+            params = (search_term, search_term, search_term, limit)
+
+            # --- Debugging Log --- 
+            # print(f"DEBUG: Executing SQL for keyword search:")
+            # print(f"DEBUG: Query: {sql_query}")
+            # print(f"DEBUG: Params: {params}")
+            # ---------------------
+
+            try:
+                cursor.execute(sql_query, params)
+                
+                rows = cursor.fetchall()
+                # --- Debugging Log --- 
+                # print(f"DEBUG: Found {len(rows)} articles for query '{query}'")
+                # ---------------------
+                articles = []
+                for row in rows:
+                    article = dict(row)
+                    # Deserialize JSON tags
+                    if 'tags' in article and article['tags']:
+                        try:
+                            article['tags'] = json.loads(article['tags'])
+                        except json.JSONDecodeError:
+                            # Keep as string if not valid JSON (fallback)
+                            pass 
+                    if 'user_tags' in article and article['user_tags']:
+                        try:
+                            article['user_tags'] = json.loads(article['user_tags'])
+                        except json.JSONDecodeError:
+                            # Keep as string if not valid JSON (fallback)
+                             pass
+                    articles.append(article)
+                
+                return articles
+            except sqlite3.Error as e:
+                print(f"Error searching articles by keyword: {e}")
+                return [] 

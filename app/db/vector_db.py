@@ -726,17 +726,23 @@ class VectorDatabase:
             print(f"Successfully created embedding with length: {len(embedding)}")
             
             # Add to ChromaDB
+            # Prepare metadata including tags
+            article_metadata = {
+                "title": article["title"],
+                "author": article["author"],
+                "url": article["url"],
+                "published_at": article["published_at"],
+                "summary": article["summary"],
+                "is_section": False,
+                # --- Add tags here ---
+                "tags": article.get("tags", []),
+                "user_tags": article.get("user_tags", [])
+                # ---------------------
+            }
             self.collection.add(
                 ids=[article_id],
                 embeddings=[embedding],
-                metadatas=[{
-                    "title": article["title"],
-                    "author": article["author"],
-                    "url": article["url"],
-                    "published_at": article["published_at"],
-                    "summary": article["summary"],
-                    "is_section": False
-                }],
+                metadatas=[article_metadata], # Use the prepared metadata
                 documents=[text_to_embed]
             )
             
@@ -941,19 +947,25 @@ class VectorDatabase:
                             return False
                             
                         # Add section to ChromaDB
+                        # Prepare metadata including tags
+                        section_metadata = {
+                            "title": f"{article['title']} - {section_title}",
+                            "author": article["author"],
+                            "url": article["url"],
+                            "published_at": article["published_at"],
+                            "summary": f"Section {i+1} of article: {section_title}",
+                            "parent_id": article_id,
+                            "is_section": True,
+                            "section_index": i,  # Store section order for reconstruction
+                            # --- Add tags here ---
+                            "tags": article.get("tags", []),
+                            "user_tags": article.get("user_tags", [])
+                            # ---------------------
+                        }
                         self.collection.add(
                             ids=[section_id],
                             embeddings=[embedding],
-                            metadatas=[{
-                                "title": f"{article['title']} - {section_title}",
-                                "author": article["author"],
-                                "url": article["url"],
-                                "published_at": article["published_at"],
-                                "summary": f"Section {i+1} of article: {section_title}",
-                                "parent_id": article_id,
-                                "is_section": True,
-                                "section_index": i  # Store section order for reconstruction
-                            }],
+                            metadatas=[section_metadata], # Use the prepared metadata
                             documents=[section_text]
                         )
                         
@@ -990,19 +1002,25 @@ class VectorDatabase:
                         continue
                         
                     # Add section to ChromaDB
+                    # Prepare metadata including tags
+                    section_metadata = {
+                        "title": f"{article['title']} - {section_title}",
+                        "author": article["author"],
+                        "url": article["url"],
+                        "published_at": article["published_at"],
+                        "summary": f"Section {i+1} of article: {section_title}",
+                        "parent_id": article_id,
+                        "is_section": True,
+                        "section_index": i,
+                        # --- Add tags here ---
+                        "tags": article.get("tags", []),
+                        "user_tags": article.get("user_tags", [])
+                        # ---------------------
+                    }
                     self.collection.add(
                         ids=[section_id],
                         embeddings=[embedding],
-                        metadatas=[{
-                            "title": f"{article['title']} - {section_title}",
-                            "author": article["author"],
-                            "url": article["url"],
-                            "published_at": article["published_at"],
-                            "summary": f"Section {i+1} of article: {section_title}",
-                            "parent_id": article_id,
-                            "is_section": True,
-                            "section_index": i
-                        }],
+                        metadatas=[section_metadata], # Use the prepared metadata
                         documents=[section_text]
                     )
                     
@@ -1102,7 +1120,11 @@ class VectorDatabase:
                         "published_at": parent_article["published_at"],
                         "summary": parent_article["summary"],
                         "matching_sections": [],
-                        "best_distance": distance
+                        "best_distance": distance,
+                        # --- Add tags from parent article ---
+                        "tags": parent_article.get("tags", []),
+                        "user_tags": parent_article.get("user_tags", [])
+                        # ----------------------------------
                     }
                 elif distance < grouped_results[parent_id]["best_distance"]:
                     grouped_results[parent_id]["best_distance"] = distance
@@ -1127,7 +1149,11 @@ class VectorDatabase:
                     "published_at": metadata["published_at"],
                     "summary": metadata["summary"],
                         "best_distance": distance,
-                        "matching_sections": []
+                        "matching_sections": [],
+                        # --- Extract tags from metadata ---
+                        "tags": metadata.get("tags", []),
+                        "user_tags": metadata.get("user_tags", [])
+                        # ---------------------------------
                     }
         
         # Convert to a list and sort by similarity
@@ -1144,7 +1170,11 @@ class VectorDatabase:
                 "url": result["url"],
                 "published_at": result["published_at"],
                 "summary": result["summary"],
-                "similarity_score": result["best_distance"]
+                "similarity_score": result["best_distance"],
+                # --- Add tags to final result ---
+                "tags": result.get("tags", []),
+                "user_tags": result.get("user_tags", [])
+                # -------------------------------
             }
             
             # Add matching sections if any

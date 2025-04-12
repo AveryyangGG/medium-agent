@@ -84,17 +84,24 @@ async def save_article(article_id: str):
     
     return {"message": "Article saved successfully"}
 
-@app.post("/search", response_model=List[Dict[str, Any]])
+@app.post("/search", response_model=List[ArticleResponse])
 async def search_articles(query: SearchQuery):
-    """Search for articles in the RAG database"""
+    """Search for articles by keyword in title, tags, or user_tags"""
+    # --- Debugging Log --- 
+    # print(f"DEBUG: search_articles endpoint called with query: '{query.query}'")
+    # print("DEBUG: Attempting to call db.search_articles_by_keyword")
+    # ---------------------
     try:
-        results = vector_db.query_similar_articles(query.query, n_results=query.limit)
+        results = db.search_articles_by_keyword(query.query, limit=query.limit)
+        # --- Debugging Log --- 
+        # print(f"DEBUG: db.search_articles_by_keyword returned {len(results)} results")
+        # ---------------------
         if not results:
             return []
         return results
     except Exception as e:
-        print(f"Search error: {e}")
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        print(f"Keyword search error: {e}")
+        raise HTTPException(status_code=500, detail=f"Keyword search failed: {str(e)}")
 
 @app.get("/search", response_class=HTMLResponse)
 async def search_page():
