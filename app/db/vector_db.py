@@ -734,10 +734,10 @@ class VectorDatabase:
                 "published_at": article["published_at"],
                 "summary": article["summary"],
                 "is_section": False,
-                # --- Add tags here ---
-                "tags": article.get("tags", []),
-                "user_tags": article.get("user_tags", [])
-                # ---------------------
+                # --- Fix tags format for ChromaDB ---
+                "tags": json.dumps(article.get("tags", [])) if article.get("tags") is not None else "",
+                "user_tags": json.dumps(article.get("user_tags", [])) if article.get("user_tags") is not None else ""
+                # ------------------------------------
             }
             self.collection.add(
                 ids=[article_id],
@@ -957,10 +957,10 @@ class VectorDatabase:
                             "parent_id": article_id,
                             "is_section": True,
                             "section_index": i,  # Store section order for reconstruction
-                            # --- Add tags here ---
-                            "tags": article.get("tags", []),
-                            "user_tags": article.get("user_tags", [])
-                            # ---------------------
+                            # --- Fix tags format for ChromaDB ---
+                            "tags": json.dumps(article.get("tags", [])) if article.get("tags") is not None else "",
+                            "user_tags": json.dumps(article.get("user_tags", [])) if article.get("user_tags") is not None else ""
+                            # ------------------------------------
                         }
                         self.collection.add(
                             ids=[section_id],
@@ -1012,10 +1012,10 @@ class VectorDatabase:
                         "parent_id": article_id,
                         "is_section": True,
                         "section_index": i,
-                        # --- Add tags here ---
-                        "tags": article.get("tags", []),
-                        "user_tags": article.get("user_tags", [])
-                        # ---------------------
+                        # --- Fix tags format for ChromaDB ---
+                        "tags": json.dumps(article.get("tags", [])) if article.get("tags") is not None else "",
+                        "user_tags": json.dumps(article.get("user_tags", [])) if article.get("user_tags") is not None else ""
+                        # ------------------------------------
                     }
                     self.collection.add(
                         ids=[section_id],
@@ -1150,10 +1150,10 @@ class VectorDatabase:
                     "summary": metadata["summary"],
                         "best_distance": distance,
                         "matching_sections": [],
-                        # --- Extract tags from metadata ---
-                        "tags": metadata.get("tags", []),
-                        "user_tags": metadata.get("user_tags", [])
-                        # ---------------------------------
+                        # --- Extract and parse tags from metadata ---
+                        "tags": self._parse_json_tags(metadata.get("tags", "")),
+                        "user_tags": self._parse_json_tags(metadata.get("user_tags", ""))
+                        # ------------------------------------------
                     }
         
         # Convert to a list and sort by similarity
@@ -1172,8 +1172,8 @@ class VectorDatabase:
                 "summary": result["summary"],
                 "similarity_score": result["best_distance"],
                 # --- Add tags to final result ---
-                "tags": result.get("tags", []),
-                "user_tags": result.get("user_tags", [])
+                "tags": self._parse_json_tags(result.get("tags", "[]")),
+                "user_tags": self._parse_json_tags(result.get("user_tags", "[]"))
                 # -------------------------------
             }
             
@@ -1185,6 +1185,17 @@ class VectorDatabase:
             formatted_results.append(formatted_result)
         
         return formatted_results
+    
+    def _parse_json_tags(self, tags_str):
+        """Parse a JSON string of tags into a Python list"""
+        if not tags_str or tags_str == "":
+            return []
+        if isinstance(tags_str, list):
+            return tags_str
+        try:
+            return json.loads(tags_str)
+        except (json.JSONDecodeError, TypeError):
+            return []
     
     def _get_recent_articles_formatted(self, limit=5):
         """Get recent articles directly from the database"""

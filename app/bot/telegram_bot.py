@@ -218,17 +218,17 @@ class TelegramBot:
             tags_str = ""
             tags = article.get('tags', [])
             if tags and isinstance(tags, list):
-                # Pre-format the joined tags
+                # Join tags but don't use backticks (which can cause Markdown parsing issues)
                 joined_tags = ", ".join(tags)
-                tags_str = f"Tags: `{joined_tags}`\n"
+                tags_str = f"Tags: {joined_tags}\n"
             user_tags = article.get('user_tags', [])
             if user_tags and isinstance(user_tags, list):
-                # Pre-format the joined user tags
+                # Join user tags without backticks
                 joined_user_tags = ", ".join(user_tags)
                 if tags_str: # Append to existing tags
-                    tags_str += f"User Tags: `{joined_user_tags}`\n"
+                    tags_str += f"User Tags: {joined_user_tags}\n"
                 else:
-                    tags_str = f"User Tags: `{joined_user_tags}`\n"
+                    tags_str = f"User Tags: {joined_user_tags}\n"
             
             keyboard = [
                 [InlineKeyboardButton("Read Article", url=article['url'])]
@@ -242,11 +242,11 @@ class TelegramBot:
                 summary = summary[:max_summary_len] + "..."
                 
             message = (
-                f"*{article['title']}*\n"
-                f"By: {article['author']} · {engagement_info}\n"
+                f"*{self._escape_markdown(article['title'])}*\n"
+                f"By: {self._escape_markdown(article['author'])} · {engagement_info}\n"
                 f"Published: {article.get('published_at','N/A').split('T')[0]}\n"
                 f"{tags_str}"
-                f"{summary}\n\n"
+                f"{self._escape_markdown(summary)}\n\n"
             )
             
             await update.message.reply_text(
@@ -490,9 +490,9 @@ class TelegramBot:
                             # 格式化消息 - 使用簡短摘要
                             summary = article.get('summary', '無摘要可用')
                             message_text = (
-                                f"*{article['title']}*\n"
-                                f"作者: {article['author']} · {engagement_info}\n\n"
-                                f"{summary}\n\n"
+                                f"*{self._escape_markdown(article['title'])}*\n"
+                                f"作者: {self._escape_markdown(article['author'])} · {engagement_info}\n\n"
+                                f"{self._escape_markdown(summary)}\n\n"
                                 f"點擊「查看詳細整理」按鈕在網頁上查看完整的條列式整理。"
                             )
                         else:
@@ -513,8 +513,8 @@ class TelegramBot:
                             # 限制訊息長度
                             max_length = 4000  # 留一些餘量
                             message_title = (
-                                f"*{article['title']}*\n"
-                                f"作者: {article['author']} · {engagement_info}\n\n"
+                                f"*{self._escape_markdown(article['title'])}*\n"
+                                f"作者: {self._escape_markdown(article['author'])} · {engagement_info}\n\n"
                             )
                             
                             # 獲取摘要
@@ -522,9 +522,9 @@ class TelegramBot:
                             
                             if len(detailed_outline) > (max_length - len(message_title)):
                                 truncated_outline = detailed_outline[:max_length - len(message_title) - 20] + "...(已截斷)"
-                                message_text = message_title + truncated_outline
+                                message_text = message_title + self._escape_markdown(truncated_outline)
                             else:
-                                message_text = message_title + detailed_outline
+                                message_text = message_title + self._escape_markdown(detailed_outline)
                         
                         reply_markup = InlineKeyboardMarkup(keyboard)
                         
@@ -610,9 +610,9 @@ class TelegramBot:
                     # 發送摘要和連結
                     summary = article.get('summary', '無摘要可用')
                     message_text = (
-                        f"*{article['title']}*\n"
-                        f"作者: {article['author']} · {engagement_info}\n\n"
-                        f"{summary}\n\n"
+                        f"*{self._escape_markdown(article['title'])}*\n"
+                        f"作者: {self._escape_markdown(article['author'])} · {engagement_info}\n\n"
+                        f"{self._escape_markdown(summary)}\n\n"
                         f"點擊「查看詳細整理」按鈕在網頁上查看完整的條列式整理。"
                     )
                     
@@ -640,20 +640,20 @@ class TelegramBot:
                     # 限制訊息長度，Telegram有限制(最多4096字符)
                     max_length = 4000  # 留一些餘量
                     message_title = (
-                        f"*{article['title']}*\n"
-                        f"作者: {article['author']} · {engagement_info}\n\n"
+                        f"*{self._escape_markdown(article['title'])}*\n"
+                        f"作者: {self._escape_markdown(article['author'])} · {engagement_info}\n\n"
                     )
                     
                     if len(detailed_outline) > (max_length - len(message_title)):
                         truncated_outline = detailed_outline[:max_length - len(message_title) - 20] + "...(已截斷)"
                         await query.message.reply_text(
-                            message_title + truncated_outline,
+                            message_title + self._escape_markdown(truncated_outline),
                             reply_markup=reply_markup,
                             parse_mode='Markdown'
                         )
                     else:
                         await query.message.reply_text(
-                            message_title + detailed_outline,
+                            message_title + self._escape_markdown(detailed_outline),
                             reply_markup=reply_markup,
                             parse_mode='Markdown'
                         )
@@ -894,9 +894,9 @@ class TelegramBot:
                     # Format with summary
                     summary = article.get('summary', 'No summary available.')
                     message = (
-                        f"*{article['title']}*\n"
-                        f"By: {article['author']} · {engagement_info}\n\n"
-                        f"{summary}\n\n"
+                        f"*{self._escape_markdown(article['title'])}*\n"
+                        f"By: {self._escape_markdown(article['author'])} · {engagement_info}\n\n"
+                        f"{self._escape_markdown(summary)}\n\n"
                     )
                 else:
                     # 沒有公開URL，使用詳細outline
@@ -909,8 +909,8 @@ class TelegramBot:
                     
                     # Format with detailed outline
                     message_title = (
-                        f"*{article['title']}*\n"
-                        f"By: {article['author']} · {engagement_info}\n\n"
+                        f"*{self._escape_markdown(article['title'])}*\n"
+                        f"By: {self._escape_markdown(article['author'])} · {engagement_info}\n\n"
                     )
                     
                     # 限制訊息長度，Telegram有限制(最多4096字符)
@@ -918,9 +918,9 @@ class TelegramBot:
                     
                     if len(detailed_outline) > (max_length - len(message_title)):
                         truncated_outline = detailed_outline[:max_length - len(message_title) - 20] + "...(已截斷)"
-                        message = message_title + truncated_outline
+                        message = message_title + self._escape_markdown(truncated_outline)
                     else:
-                        message = message_title + detailed_outline
+                        message = message_title + self._escape_markdown(detailed_outline)
                 
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
@@ -1152,4 +1152,13 @@ class TelegramBot:
             )
         
         if len(articles) == max_display and max_display < len(articles):
-            await update.message.reply_text(f"僅顯示前 {max_display} 篇結果") 
+            await update.message.reply_text(f"僅顯示前 {max_display} 篇結果")
+
+    def _escape_markdown(self, text):
+        """Escape Markdown special characters in the text"""
+        if text is None:
+            return ""
+        if not isinstance(text, str):
+            text = str(text)
+        escape_chars = r'_*[]()~`>#+-=|{}.!'
+        return ''.join(f'\\{char}' if char in escape_chars else char for char in text) 
